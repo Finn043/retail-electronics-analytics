@@ -1,0 +1,6 @@
+# The core pipeline uses only the Python standard library.
+# Optional packages for notebook exploration / richer charts:
+pandas>=2.2.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+

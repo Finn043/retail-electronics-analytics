@@ -1,0 +1,2 @@
+"""Retail electronics analytics pipeline."""
+

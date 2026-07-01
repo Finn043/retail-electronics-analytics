@@ -1,0 +1,10 @@
+metric,value
+rows_seen,250001
+rows_valid,250000
+rows_invalid_json,0
+rows_missing_required,0
+pct_rows_with_review_text,99.96
+pct_rows_with_helpful_votes,50.85
+unique_products,10378
+earliest_review_month,1999-06
+latest_review_month,2014-07
