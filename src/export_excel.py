@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Iterable
 
 from openpyxl import Workbook
-from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -125,99 +124,6 @@ def add_readme_sheet(wb: Workbook, fact_limit: int) -> None:
     ws.column_dimensions["B"].width = 110
 
 
-def add_dashboard_sheet(wb: Workbook) -> None:
-    ws = wb.create_sheet("Dashboard", 1)
-    ws.sheet_view.showGridLines = False
-    ws["A1"] = "Retail Electronics Review Dashboard"
-    ws["A1"].font = Font(size=22, bold=True, color="111313")
-    ws["A2"] = "Executive snapshot generated from modeled review data and dashboard marts."
-    ws["A2"].font = Font(color="646866")
-
-    metrics = read_key_value(MARTS_DIR / "mart_data_quality_summary.csv")
-    product_headers, product_rows = read_csv(MARTS_DIR / "mart_product_performance.csv", limit=8)
-    rating_headers, rating_rows = read_csv(MARTS_DIR / "mart_rating_distribution.csv")
-    monthly_headers, monthly_rows = read_csv(MARTS_DIR / "mart_monthly_review_trends.csv")
-
-    kpis = [
-        ("Processed reviews", metrics.get("rows_valid", "")),
-        ("Unique products", metrics.get("unique_products", "")),
-        ("Review text coverage", f"{metrics.get('pct_rows_with_review_text', '')}%"),
-        ("Helpful vote coverage", f"{metrics.get('pct_rows_with_helpful_votes', '')}%"),
-    ]
-
-    start_cols = ["A", "C", "E", "G"]
-    for index, (label, value) in enumerate(kpis):
-        col = start_cols[index]
-        ws[f"{col}4"] = label
-        ws[f"{col}5"] = value
-        ws[f"{col}4"].font = Font(bold=True, color="646866")
-        ws[f"{col}5"].font = Font(size=18, bold=True, color="111313")
-        ws.merge_cells(f"{col}4:{get_column_letter(ord(col) - ord('A') + 2)}4")
-        ws.merge_cells(f"{col}5:{get_column_letter(ord(col) - ord('A') + 2)}5")
-
-    ws["A8"] = "Top products by review volume"
-    ws["A8"].font = Font(size=14, bold=True)
-    top_cols = ["asin", "review_count", "avg_rating", "quality_flag"]
-    for col_index, header in enumerate(top_cols, 1):
-        ws.cell(row=9, column=col_index, value=header)
-    header_positions = {header: product_headers.index(header) for header in top_cols}
-    for row_index, row in enumerate(product_rows, 10):
-        for col_index, header in enumerate(top_cols, 1):
-            ws.cell(row=row_index, column=col_index, value=row[header_positions[header]])
-
-    ws["F8"] = "Rating distribution"
-    ws["F8"].font = Font(size=14, bold=True)
-    for col_index, header in enumerate(rating_headers, 6):
-        ws.cell(row=9, column=col_index, value=header)
-    for row_index, row in enumerate(rating_rows, 10):
-        for col_index, value in enumerate(row, 6):
-            ws.cell(row=row_index, column=col_index, value=value)
-
-    ws["A21"] = "Monthly trend source"
-    ws["A21"].font = Font(size=14, bold=True)
-    trend_rows = monthly_rows[-24:]
-    for col_index, header in enumerate(monthly_headers, 1):
-        ws.cell(row=22, column=col_index, value=header)
-    for row_index, row in enumerate(trend_rows, 23):
-        for col_index, value in enumerate(row, 1):
-            ws.cell(row=row_index, column=col_index, value=value)
-
-    style_sheet(ws)
-    add_dashboard_charts(ws, len(rating_rows), len(trend_rows))
-
-
-def read_key_value(path: Path) -> dict[str, str]:
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        return {row["metric"]: row["value"] for row in reader}
-
-
-def add_dashboard_charts(ws, rating_count: int, trend_count: int) -> None:
-    bar = BarChart()
-    bar.title = "Rating Distribution"
-    bar.y_axis.title = "Reviews"
-    bar.x_axis.title = "Rating"
-    rating_data = Reference(ws, min_col=7, min_row=9, max_row=9 + rating_count)
-    rating_categories = Reference(ws, min_col=6, min_row=10, max_row=9 + rating_count)
-    bar.add_data(rating_data, titles_from_data=True)
-    bar.set_categories(rating_categories)
-    bar.height = 7
-    bar.width = 13
-    ws.add_chart(bar, "F17")
-
-    line = LineChart()
-    line.title = "Monthly Review Volume"
-    line.y_axis.title = "Reviews"
-    line.x_axis.title = "Month"
-    line_data = Reference(ws, min_col=2, min_row=22, max_row=22 + trend_count)
-    line_categories = Reference(ws, min_col=1, min_row=23, max_row=22 + trend_count)
-    line.add_data(line_data, titles_from_data=True)
-    line.set_categories(line_categories)
-    line.height = 7
-    line.width = 18
-    ws.add_chart(line, "A49")
-
-
 def add_model_relationship_sheet(wb: Workbook) -> None:
     ws = wb.create_sheet("Model Relationships")
     rows = [
@@ -239,7 +145,6 @@ def add_model_relationship_sheet(wb: Workbook) -> None:
 def build_workbook(output_path: Path, fact_limit: int) -> None:
     wb = Workbook()
     add_readme_sheet(wb, fact_limit)
-    add_dashboard_sheet(wb)
     add_model_relationship_sheet(wb)
 
     add_table_sheet(wb, "fact_reviews", MODEL_DIR / "fact_reviews.csv", "FactReviews", row_limit=fact_limit)
@@ -264,4 +169,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -136,13 +136,13 @@ To export a portable Excel workbook:
 make excel
 ```
 
-The workbook is written to:
+The model-only workbook is written to:
 
 ```text
 reports/retail_electronics_model.xlsx
 ```
 
-The modeled CSV fact table contains the configured `LIMIT` rows. The Excel workbook includes the first 100,000 fact rows by default so it stays practical to open, inspect, and screenshot locally.
+The modeled CSV fact table contains the configured `LIMIT` rows. The Excel workbook includes the first 100,000 fact rows by default so it stays practical to open and inspect locally. Dashboard design is handled in Looker Studio or the static HTML preview, not inside the workbook.
 
 See [docs/excel_model_workflow.md](docs/excel_model_workflow.md) for the step-by-step workflow.
 
