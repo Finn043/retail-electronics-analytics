@@ -79,6 +79,7 @@ The pipeline writes:
 - `data/marts/mart_top_review_terms.csv`
 - `reports/data_quality_report.md`
 - `reports/executive_summary.md`
+- `dashboard/index.html`
 
 ## How To Run
 
@@ -95,6 +96,32 @@ python3 -m src.pipeline --input data/raw/Electronics_5.json --limit 250000
 ```
 
 `LIMIT` controls how many valid review rows are processed for the portfolio output. Increase it for deeper analysis.
+
+To regenerate the static dashboard from the marts:
+
+```bash
+make dashboard
+```
+
+## Dashboard Preview
+
+The repo includes a self-contained HTML dashboard asset:
+
+```text
+dashboard/index.html
+```
+
+Open it directly in a browser to capture screenshots for GitHub, LinkedIn, or the portfolio website. The dashboard is generated from `data/marts/*.csv` and includes:
+
+- executive KPI cards
+- monthly review-volume trend
+- rating distribution chart
+- top product performance table
+- quality watchlist
+- common review-language chips
+- decision notes for marketplace/category teams
+
+![Retail Electronics Analytics Dashboard](dashboard/screenshots/dashboard-preview.png)
 
 ## Current KPI Marts
 
@@ -168,4 +195,3 @@ This project demonstrates:
 ## Attribution
 
 This project is an original portfolio implementation built around a public Amazon review dataset. Reference repositories were studied for architecture and documentation patterns only; no source code, dashboards, or README prose was copied.
-

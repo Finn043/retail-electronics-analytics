@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Retail Electronics Analytics Dashboard</title>
+  <style>
+    :root {
+      --bg: #f4f4f1;
+      --panel: #ffffff;
+      --ink: #111313;
+      --muted: #646866;
+      --soft: #e5e2dc;
+      --line: #dedbd3;
+      --accent: #0f766e;
+      --accent-soft: #d8f2ec;
+      --risk: #a34118;
+      --risk-soft: #f7dfd2;
+      --good: #186c45;
+      --good-soft: #ddf3e6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(17,19,19,0.045) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(17,19,19,0.045) 1px, transparent 1px),
+        var(--bg);
+      background-size: 44px 44px;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .shell {
+      width: min(1440px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 28px 0 40px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 22px;
+    }
+
+    .label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 5px var(--accent-soft);
+    }
+
+    h1 {
+      margin: 14px 0 10px;
+      max-width: 880px;
+      font-size: clamp(42px, 5.4vw, 84px);
+      line-height: 0.94;
+      letter-spacing: -0.055em;
+    }
+
+    .subtitle {
+      margin: 0;
+      max-width: 700px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.5;
+    }
+
+    .meta {
+      justify-self: end;
+      width: min(100%, 420px);
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.74);
+      border-radius: 18px;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .mini-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .mini-value {
+      margin-top: 4px;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 18px 50px rgba(26, 27, 25, 0.06);
+    }
+
+    .kpi {
+      padding: 18px;
+      min-height: 134px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .kpi .value {
+      font-size: clamp(30px, 3vw, 48px);
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+    }
+
+    .kpi .note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .panel {
+      padding: 22px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: -0.03em;
+    }
+
+    .panel p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .axis-label {
+      fill: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .value-label {
+      fill: var(--ink);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--line);
+      padding: 0 0 10px;
+    }
+
+    td {
+      border-bottom: 1px solid var(--soft);
+      padding: 12px 0;
+      vertical-align: middle;
+    }
+
+    th:not(:first-child),
+    td:not(:first-child) {
+      text-align: right;
+      padding-left: 14px;
+    }
+
+    .asin {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .status {
+      display: inline-flex;
+      justify-content: center;
+      min-width: 78px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: #f1f0ea;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .status.strong {
+      background: var(--good-soft);
+      color: var(--good);
+    }
+
+    .status.risk {
+      background: var(--risk-soft);
+      color: var(--risk);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      align-content: flex-start;
+    }
+
+    .chip {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 11px;
+      border-radius: 999px;
+      background: #f4f3ef;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .chip strong {
+      color: var(--ink);
+      font-size: 12px;
+    }
+
+    .insight-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .insight-list li {
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbfaf7;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .insight-list strong {
+      color: var(--ink);
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 980px) {
+      header,
+      .grid,
+      .kpis {
+        grid-template-columns: 1fr;
+      }
+
+      .meta {
+        justify-self: stretch;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        width: min(100vw - 28px, 1440px);
+        padding-top: 18px;
+      }
+
+      .panel,
+      .kpi {
+        padding: 16px;
+      }
+
+      .meta-grid {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <section>
+        <div class="label"><span class="dot"></span> Retail Electronics Analytics</div>
+        <h1>Review signals into BI-ready decisions.</h1>
+        <p class="subtitle">A static executive dashboard generated from Amazon Electronics review marts: product quality, rating mix, review trends, and data completeness.</p>
+      </section>
+      <aside class="meta">
+        <div class="meta-grid">
+          <div>
+            <div class="mini-label">Dataset window</div>
+            <div class="mini-value">1999-06 - 2014-07</div>
+          </div>
+          <div>
+            <div class="mini-label">Latest month</div>
+            <div class="mini-value">2014-07</div>
+          </div>
+          <div>
+            <div class="mini-label">Peak month</div>
+            <div class="mini-value">2013-01</div>
+          </div>
+          <div>
+            <div class="mini-label">Source</div>
+            <div class="mini-value">Amazon reviews</div>
+          </div>
+        </div>
+      </aside>
+    </header>
+
+    <section class="kpis">
+      <article class="card kpi">
+        <div class="mini-label">Processed reviews</div>
+        <div class="value">250,000</div>
+        <div class="note">Valid JSONL rows converted into analysis-ready marts.</div>
+      </article>
+      <article class="card kpi">
+        <div class="mini-label">Unique products</div>
+        <div class="value">10,378</div>
+        <div class="note">ASIN-level product keys available for KPI monitoring.</div>
+      </article>
+      <article class="card kpi">
+        <div class="mini-label">Weighted avg rating</div>
+        <div class="value">4.21</div>
+        <div class="note">Weighted across all processed review ratings.</div>
+      </article>
+      <article class="card kpi">
+        <div class="mini-label">Helpful vote coverage</div>
+        <div class="value">50.85%</div>
+        <div class="note">Share of reviews with at least one helpful-vote signal.</div>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h2>Monthly review trend</h2>
+            <p>Recent review-volume trajectory from dashboard-ready monthly mart.</p>
+          </div>
+        </div>
+        
+    <svg viewBox="0 0 760 240" role="img" aria-label="Monthly review trend line chart">
+      <line x1="46" y1="20.0" x2="740" y2="20.0" stroke="var(--line)" /><line x1="46" y1="64.5" x2="740" y2="64.5" stroke="var(--line)" /><line x1="46" y1="109.0" x2="740" y2="109.0" stroke="var(--line)" /><line x1="46" y1="153.5" x2="740" y2="153.5" stroke="var(--line)" /><line x1="46" y1="198.0" x2="740" y2="198.0" stroke="var(--line)" />
+      <polyline points="46.0,183.6 69.9,188.3 93.9,196.6 117.8,197.4 141.7,198.0 165.7,193.7 189.6,190.6 213.5,196.4 237.4,194.8 261.4,150.6 285.3,34.4 309.2,20.0 333.2,68.2 357.1,74.3 381.0,88.2 405.0,100.7 428.9,114.7 452.8,104.3 476.8,105.6 500.7,136.4 524.6,120.6 548.6,102.4 572.5,57.7 596.4,72.2 620.3,101.1 644.3,95.5 668.2,125.5 692.1,135.7 716.1,138.3 740.0,173.0" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="46.0" cy="183.6" r="3.4" fill="var(--accent)" /><circle cx="117.8" cy="197.4" r="3.4" fill="var(--accent)" /><circle cx="189.6" cy="190.6" r="3.4" fill="var(--accent)" /><circle cx="261.4" cy="150.6" r="3.4" fill="var(--accent)" /><circle cx="333.2" cy="68.2" r="3.4" fill="var(--accent)" /><circle cx="405.0" cy="100.7" r="3.4" fill="var(--accent)" /><circle cx="476.8" cy="105.6" r="3.4" fill="var(--accent)" /><circle cx="548.6" cy="102.4" r="3.4" fill="var(--accent)" /><circle cx="620.3" cy="101.1" r="3.4" fill="var(--accent)" /><circle cx="692.1" cy="135.7" r="3.4" fill="var(--accent)" />
+      <text x="46" y="228" class="axis-label">2012-02</text><text x="740" y="228" text-anchor="end" class="axis-label">2014-07</text>
+    </svg>
+    
+      </article>
+
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h2>Rating distribution</h2>
+            <p>Rating mix shows strong positive skew, with watchlist products still visible in product-level marts.</p>
+          </div>
+        </div>
+        
+    <svg viewBox="0 0 520 210" role="img" aria-label="Rating distribution bar chart">
+      <line x1="42" y1="176" x2="508" y2="176" stroke="var(--line)" />
+      <rect x="42.0" y="157.8" width="80.0" height="18.2" rx="8" fill="var(--ink)" opacity="0.38"/><rect x="136.0" y="163.1" width="80.0" height="12.9" rx="8" fill="var(--ink)" opacity="0.50"/><rect x="230.0" y="154.9" width="80.0" height="21.1" rx="8" fill="var(--ink)" opacity="0.62"/><rect x="324.0" y="122.1" width="80.0" height="53.9" rx="8" fill="var(--ink)" opacity="0.74"/><rect x="418.0" y="18.0" width="80.0" height="158.0" rx="8" fill="var(--ink)" opacity="0.86"/>
+      <text x="82.0" y="200" text-anchor="middle" class="axis-label">1 star</text><text x="82.0" y="149.8" text-anchor="middle" class="value-label">17,202</text><text x="176.0" y="200" text-anchor="middle" class="axis-label">2 star</text><text x="176.0" y="155.1" text-anchor="middle" class="value-label">12,231</text><text x="270.0" y="200" text-anchor="middle" class="axis-label">3 star</text><text x="270.0" y="146.9" text-anchor="middle" class="value-label">20,018</text><text x="364.0" y="200" text-anchor="middle" class="axis-label">4 star</text><text x="364.0" y="114.1" text-anchor="middle" class="value-label">50,999</text><text x="458.0" y="200" text-anchor="middle" class="axis-label">5 star</text><text x="458.0" y="10.0" text-anchor="middle" class="value-label">149,550</text>
+    </svg>
+    
+      </article>
+
+      <article class="card panel wide">
+        <div class="panel-header">
+          <div>
+            <h2>Top products by review volume</h2>
+            <p>Sorted by product engagement. Quality flags separate high-performing products from monitoring candidates.</p>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Reviews</th>
+              <th>Avg rating</th>
+              <th>Avg words</th>
+              <th>Flag</th>
+            </tr>
+          </thead>
+          <tbody>
+        <tr>
+          <td><span class="asin">B0002L5R78</span></td>
+          <td>2,599</td>
+          <td>4.60</td>
+          <td>51.3</td>
+          <td><span class="status strong">High volume / high rating</span></td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B000BQ7GW8</span></td>
+          <td>1,388</td>
+          <td>4.70</td>
+          <td>41.7</td>
+          <td><span class="status strong">High volume / high rating</span></td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B00007E7JU</span></td>
+          <td>1,279</td>
+          <td>4.59</td>
+          <td>110.7</td>
+          <td><span class="status strong">High volume / high rating</span></td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B00004ZCJE</span></td>
+          <td>1,258</td>
+          <td>4.28</td>
+          <td>48.9</td>
+          <td><span class="status">Monitor</span></td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B000I68BD4</span></td>
+          <td>1,018</td>
+          <td>3.72</td>
+          <td>75.7</td>
+          <td><span class="status">Monitor</span></td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B000JMJWV2</span></td>
+          <td>967</td>
+          <td>4.48</td>
+          <td>62.0</td>
+          <td><span class="status">Monitor</span></td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B0001FTVEK</span></td>
+          <td>950</td>
+          <td>3.90</td>
+          <td>127.6</td>
+          <td><span class="status">Monitor</span></td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B000JE7GPY</span></td>
+          <td>886</td>
+          <td>4.74</td>
+          <td>66.7</td>
+          <td><span class="status strong">High volume / high rating</span></td>
+        </tr>
+        </tbody>
+        </table>
+      </article>
+
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h2>Quality watchlist</h2>
+            <p>Products to inspect when review volume is meaningful but satisfaction is weaker.</p>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Reviews</th>
+              <th>Avg rating</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+        <tr>
+          <td><span class="asin">B00008SCFL</span></td>
+          <td>262</td>
+          <td>3.40</td>
+          <td>Watchlist</td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B00021XIJW</span></td>
+          <td>166</td>
+          <td>3.03</td>
+          <td>Watchlist</td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B00006HYPV</span></td>
+          <td>137</td>
+          <td>3.49</td>
+          <td>Watchlist</td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B000CS1TLE</span></td>
+          <td>135</td>
+          <td>3.44</td>
+          <td>Watchlist</td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B000629GES</span></td>
+          <td>129</td>
+          <td>3.46</td>
+          <td>Watchlist</td>
+        </tr>
+        
+
+        <tr>
+          <td><span class="asin">B0001F22PA</span></td>
+          <td>115</td>
+          <td>2.56</td>
+          <td>Watchlist</td>
+        </tr>
+        </tbody>
+        </table>
+      </article>
+
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h2>Common review language</h2>
+            <p>Top cleaned terms from review summaries and body text.</p>
+          </div>
+        </div>
+        <div class="chips"><span class="chip">these <strong>94,469</strong></span>
+<span class="chip">camera <strong>76,188</strong></span>
+<span class="chip">lens <strong>73,681</strong></span>
+<span class="chip">quality <strong>71,538</strong></span>
+<span class="chip">sound <strong>70,141</strong></span>
+<span class="chip">them <strong>69,303</strong></span>
+<span class="chip">only <strong>68,258</strong></span>
+<span class="chip">price <strong>68,138</strong></span>
+<span class="chip">other <strong>62,339</strong></span>
+<span class="chip">which <strong>59,444</strong></span>
+<span class="chip">some <strong>59,226</strong></span>
+<span class="chip">don&#x27;t <strong>56,448</strong></span>
+<span class="chip">also <strong>54,457</strong></span>
+<span class="chip">time <strong>53,493</strong></span>
+<span class="chip">much <strong>52,851</strong></span>
+<span class="chip">cable <strong>52,338</strong></span>
+<span class="chip">bought <strong>50,293</strong></span>
+<span class="chip">better <strong>49,847</strong></span></div>
+      </article>
+
+      <article class="card panel wide">
+        <div class="panel-header">
+          <div>
+            <h2>Decision notes</h2>
+            <p>How this dashboard should be interpreted by a marketplace or category team.</p>
+          </div>
+        </div>
+        <ul class="insight-list">
+          <li><strong>Review volume is the engagement proxy.</strong> The current dataset does not include sales quantity, so review count is used as a directional customer-activity signal.</li>
+          <li><strong>ASIN is the product key.</strong> Product metadata can be joined later to unlock category, brand, and price-band views.</li>
+          <li><strong>Quality flags are deliberately simple.</strong> They create a transparent first-pass watchlist before adding sentiment or support-ticket classification.</li>
+          <li><strong>The marts are BI-ready.</strong> The CSV outputs can be connected directly to Power BI, Tableau, DuckDB, or a lightweight web dashboard.</li>
+        </ul>
+      </article>
+    </section>
+
+    <footer>
+      <span>Generated from data/marts by src/build_dashboard.py</span>
+      <span>Retail Electronics Analytics Pipeline</span>
+    </footer>
+  </main>
+</body>
+</html>
