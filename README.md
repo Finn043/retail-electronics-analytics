@@ -72,6 +72,10 @@ retail-electronics-analytics/
 The pipeline writes:
 
 - `data/processed/cleaned_reviews_sample.csv`
+- `data/model/fact_reviews.csv`
+- `data/model/dim_products.csv`
+- `data/model/dim_review_months.csv`
+- `data/model/dim_ratings.csv`
 - `data/marts/mart_product_performance.csv`
 - `data/marts/mart_monthly_review_trends.csv`
 - `data/marts/mart_rating_distribution.csv`
@@ -97,11 +101,50 @@ python3 -m src.pipeline --input data/raw/Electronics_5.json --limit 250000
 
 `LIMIT` controls how many valid review rows are processed for the portfolio output. Increase it for deeper analysis.
 
+To export Supabase/Looker-ready model tables:
+
+```bash
+make model RAW=data/raw/Electronics_5.json LIMIT=250000
+```
+
 To regenerate the static dashboard from the marts:
 
 ```bash
 make dashboard
 ```
+
+## Data Model For Excel / BI Tools
+
+The repo includes a simple star schema export for practicing analytics modeling:
+
+```text
+fact_reviews
+dim_products
+dim_review_months
+dim_ratings
+```
+
+To build the model tables:
+
+```bash
+make model RAW=data/raw/Electronics_5.json LIMIT=250000
+```
+
+To export a portable Excel workbook:
+
+```bash
+make excel
+```
+
+The workbook is written to:
+
+```text
+reports/retail_electronics_model.xlsx
+```
+
+The modeled CSV fact table contains the configured `LIMIT` rows. The Excel workbook includes the first 100,000 fact rows by default so it stays practical to open, inspect, and screenshot locally.
+
+See [docs/excel_model_workflow.md](docs/excel_model_workflow.md) for the step-by-step workflow.
 
 ## Dashboard Preview
 

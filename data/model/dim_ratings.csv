@@ -1,0 +1,6 @@
+rating_id,rating_label,rating_sentiment,rating_sort
+1,1 star,negative,1
+2,2 star,negative,2
+3,3 star,neutral,3
+4,4 star,positive,4
+5,5 star,positive,5
