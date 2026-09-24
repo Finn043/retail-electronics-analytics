@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import html
+import json
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,74 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MARTS_DIR = PROJECT_ROOT / "data" / "marts"
 DASHBOARD_DIR = PROJECT_ROOT / "dashboard"
 OUTPUT_PATH = DASHBOARD_DIR / "index.html"
+
+FILTER_SCRIPT = """(() => {
+  const products = JSON.parse(document.querySelector('#product-data').textContent);
+  const search = document.querySelector('#product-search');
+  const minimum = document.querySelector('#minimum-reviews');
+  const ratingBand = document.querySelector('#rating-band');
+  const quality = document.querySelector('#quality-flag');
+  const body = document.querySelector('#product-results');
+  const count = document.querySelector('#product-count');
+  const more = document.querySelector('#load-more');
+  const labels = {
+    high_volume_high_rating: 'High volume / high rating',
+    high_volume_low_rating: 'Watchlist',
+    monitor: 'Monitor'
+  };
+  let visible = 20;
+
+  function render() {
+    const query = search.value.trim().toUpperCase();
+    const min = Number(minimum.value);
+    const matches = products.filter((product) => {
+      const rating = product.avg_rating;
+      return product.asin.includes(query)
+        && product.review_count >= min
+        && (!quality.value || product.quality_flag === quality.value)
+        && (ratingBand.value === 'all'
+          || (ratingBand.value === 'low' && rating < 3.5)
+          || (ratingBand.value === 'mid' && rating >= 3.5 && rating < 4.5)
+          || (ratingBand.value === 'high' && rating >= 4.5));
+    });
+    const shown = matches.slice(0, visible);
+    const fragment = document.createDocumentFragment();
+    for (const product of shown) {
+      const row = document.createElement('tr');
+      const values = [product.asin, product.review_count.toLocaleString('en-US'),
+        product.avg_rating.toFixed(2), product.avg_review_word_count.toFixed(1),
+        labels[product.quality_flag] || product.quality_flag];
+      values.forEach((value, index) => {
+        const cell = document.createElement('td');
+        const text = index === 0 || index === 4 ? document.createElement('span') : cell;
+        text.textContent = value;
+        if (index === 0) text.className = 'asin';
+        if (index === 4) text.className = product.quality_flag === 'high_volume_high_rating'
+          ? 'status strong' : product.quality_flag === 'high_volume_low_rating' ? 'status risk' : 'status';
+        if (text !== cell) cell.append(text);
+        row.append(cell);
+      });
+      fragment.append(row);
+    }
+    if (!matches.length) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 5;
+      cell.textContent = 'No products match these filters. Try a wider rating or review range.';
+      row.append(cell);
+      fragment.append(row);
+    }
+    body.replaceChildren(fragment);
+    count.textContent = `Showing ${shown.length.toLocaleString('en-US')} of ${matches.length.toLocaleString('en-US')} matching products`;
+    more.hidden = shown.length >= matches.length;
+  }
+
+  search.addEventListener('input', () => { visible = 20; render(); });
+  [minimum, ratingBand, quality].forEach((control) =>
+    control.addEventListener('change', () => { visible = 20; render(); }));
+  more.addEventListener('click', () => { visible += 20; render(); });
+  render();
+})();"""
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -154,7 +223,7 @@ def status_class(flag: str) -> str:
 
 
 def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
-    products = data["products"]
+    products = sorted(data["products"], key=lambda row: number(row["review_count"]), reverse=True)
     monthly = data["monthly"]
     ratings = data["ratings"]
     terms = data["terms"]
@@ -169,6 +238,16 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
     )
 
     top_products = products[:8]
+    product_json = json.dumps([
+        {
+            "asin": row["asin"],
+            "review_count": int(number(row["review_count"])),
+            "avg_rating": number(row["avg_rating"]),
+            "avg_review_word_count": round(number(row["avg_review_word_count"]), 1),
+            "quality_flag": row["quality_flag"],
+        }
+        for row in products
+    ], separators=(",", ":")).replace("<", "\\u003c")
     watchlist = [row for row in products if row["quality_flag"] == "high_volume_low_rating"][:6]
     if not watchlist:
         watchlist = products[8:14]
@@ -395,6 +474,64 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       grid-column: 1 / -1;
     }}
 
+    .product-filters {{
+      display: grid;
+      grid-template-columns: 1.4fr repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }}
+
+    .product-filters label {{
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }}
+
+    .product-filters input,
+    .product-filters select {{
+      width: 100%;
+      min-height: 42px;
+      padding: 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--ink);
+      font: 500 14px Arial, Helvetica, sans-serif;
+    }}
+
+    .product-filters :is(input, select):focus-visible,
+    .load-more:focus-visible {{
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }}
+
+    .filter-count {{
+      margin: 0 0 14px !important;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .load-more {{
+      display: block;
+      margin: 18px auto 0;
+      padding: 10px 18px;
+      border: 1px solid var(--accent);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--accent);
+      font: 700 13px Arial, Helvetica, sans-serif;
+      cursor: pointer;
+    }}
+
+    .load-more:hover {{
+      background: var(--accent-soft);
+    }}
+
+    .load-more[hidden] {{ display: none; }}
+
     svg {{
       width: 100%;
       height: auto;
@@ -533,6 +670,10 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
         grid-template-columns: 1fr;
       }}
 
+      .product-filters {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
       .meta {{
         justify-self: stretch;
       }}
@@ -549,12 +690,21 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
         padding: 16px;
       }}
 
+      .panel {{
+        overflow-x: auto;
+      }}
+
+      .product-filters {{
+        grid-template-columns: 1fr;
+      }}
+
       .meta-grid {{
         grid-template-columns: 1fr;
       }}
 
       table {{
         font-size: 12px;
+        min-width: 560px;
       }}
     }}
   </style>
@@ -636,10 +786,28 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       <article class="card panel wide">
         <div class="panel-header">
           <div>
-            <h2>Top products by review volume</h2>
-            <p>Sorted by product engagement. Quality flags separate high-performing products from monitoring candidates.</p>
+            <h2>Explore products</h2>
+            <p>Search the full product mart, sorted by review volume. Filters apply to this table only; KPIs and charts above show the complete sample.</p>
           </div>
         </div>
+        <div class="product-filters">
+          <label>Product ASIN <input id="product-search" type="search" placeholder="Search product ID" autocomplete="off" /></label>
+          <label>Minimum reviews <select id="minimum-reviews">
+            <option value="0">Any volume</option><option value="100">100+</option>
+            <option value="250">250+</option><option value="500">500+</option>
+          </select></label>
+          <label>Average rating <select id="rating-band">
+            <option value="all">Any rating</option><option value="low">Below 3.5</option>
+            <option value="mid">3.5 to 4.49</option><option value="high">4.5 and above</option>
+          </select></label>
+          <label>Quality flag <select id="quality-flag">
+            <option value="">All flags</option>
+            <option value="high_volume_high_rating">High volume / high rating</option>
+            <option value="high_volume_low_rating">Watchlist</option>
+            <option value="monitor">Monitor</option>
+          </select></label>
+        </div>
+        <p class="filter-count" id="product-count" role="status" aria-live="polite">Showing 8 highest-volume products</p>
         <table>
           <thead>
             <tr>
@@ -650,8 +818,9 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
               <th>Flag</th>
             </tr>
           </thead>
-          <tbody>{product_rows}</tbody>
+          <tbody id="product-results">{product_rows}</tbody>
         </table>
+        <button class="load-more" id="load-more" type="button" hidden>Show 20 more</button>
       </article>
 
       <article class="card panel">
@@ -705,6 +874,8 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       <span>Retail Electronics Analytics Pipeline</span>
     </footer>
   </main>
+  <script type="application/json" id="product-data">{product_json}</script>
+  <script>{FILTER_SCRIPT}</script>
 </body>
 </html>
 """
@@ -713,10 +884,9 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
 def main() -> None:
     data = load_marts()
     DASHBOARD_DIR.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(render_dashboard(data), encoding="utf-8")
+    OUTPUT_PATH.write_text("\n".join(line.rstrip() for line in render_dashboard(data).splitlines()) + "\n", encoding="utf-8")
     print(f"Wrote dashboard to {OUTPUT_PATH}")
 
 
 if __name__ == "__main__":
     main()
-

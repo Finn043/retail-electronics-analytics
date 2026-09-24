@@ -154,6 +154,8 @@ The repo includes a self-contained HTML dashboard asset:
 dashboard/index.html
 ```
 
+[Open the hosted dashboard demo](https://tin-luong-portfolio.netlify.app/demos/retail-electronics/). Its product explorer filters all 10,378 product keys by ASIN, review volume, rating, and quality flag. The headline KPIs and charts remain totals for the full processed sample.
+
 Open it directly in a browser to capture screenshots for GitHub, LinkedIn, or the portfolio website. The dashboard is generated from `data/marts/*.csv` and includes:
 
 - executive KPI cards
