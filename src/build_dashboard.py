@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import html
 import json
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -11,15 +12,24 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MARTS_DIR = PROJECT_ROOT / "data" / "marts"
 DASHBOARD_DIR = PROJECT_ROOT / "dashboard"
 OUTPUT_PATH = DASHBOARD_DIR / "index.html"
+FACT_PATH = PROJECT_ROOT / "data" / "model" / "fact_reviews.csv"
 
 FILTER_SCRIPT = """(() => {
-  const products = JSON.parse(document.querySelector('#product-data').textContent);
-  const search = document.querySelector('#product-search');
-  const minimum = document.querySelector('#minimum-reviews');
-  const ratingBand = document.querySelector('#rating-band');
-  const quality = document.querySelector('#quality-flag');
+  const data = JSON.parse(document.querySelector('#dashboard-data').textContent);
+  const products = data.products;
+  const months = data.months;
+  const controls = {
+    search: document.querySelector('#product-search'),
+    minimum: document.querySelector('#minimum-reviews'),
+    rating: document.querySelector('#rating-filter'),
+    quality: document.querySelector('#quality-flag'),
+    start: document.querySelector('#start-month'),
+    end: document.querySelector('#end-month')
+  };
   const body = document.querySelector('#product-results');
+  const watchBody = document.querySelector('#watch-results');
   const count = document.querySelector('#product-count');
+  const active = document.querySelector('#active-filter-summary');
   const more = document.querySelector('#load-more');
   const labels = {
     high_volume_high_rating: 'High volume / high rating',
@@ -28,22 +38,12 @@ FILTER_SCRIPT = """(() => {
   };
   let visible = 20;
 
-  function render() {
-    const query = search.value.trim().toUpperCase();
-    const min = Number(minimum.value);
-    const matches = products.filter((product) => {
-      const rating = product.avg_rating;
-      return product.asin.includes(query)
-        && product.review_count >= min
-        && (!quality.value || product.quality_flag === quality.value)
-        && (ratingBand.value === 'all'
-          || (ratingBand.value === 'low' && rating < 3.5)
-          || (ratingBand.value === 'mid' && rating >= 3.5 && rating < 4.5)
-          || (ratingBand.value === 'high' && rating >= 4.5));
-    });
-    const shown = matches.slice(0, visible);
+  const integer = new Intl.NumberFormat('en-US');
+  const pct = (value) => `${value.toFixed(2)}%`;
+
+  function productRows(items, limit = items.length) {
     const fragment = document.createDocumentFragment();
-    for (const product of shown) {
+    for (const product of items.slice(0, limit)) {
       const row = document.createElement('tr');
       const values = [product.asin, product.review_count.toLocaleString('en-US'),
         product.avg_rating.toFixed(2), product.avg_review_word_count.toFixed(1),
@@ -60,22 +60,123 @@ FILTER_SCRIPT = """(() => {
       });
       fragment.append(row);
     }
-    if (!matches.length) {
+    if (!items.length) {
       const row = document.createElement('tr');
       const cell = document.createElement('td');
       cell.colSpan = 5;
-      cell.textContent = 'No products match these filters. Try a wider rating or review range.';
+      cell.textContent = 'No data matches this selection. Reset or widen the filters.';
       row.append(cell);
       fragment.append(row);
     }
-    body.replaceChildren(fragment);
-    count.textContent = `Showing ${shown.length.toLocaleString('en-US')} of ${matches.length.toLocaleString('en-US')} matching products`;
-    more.hidden = shown.length >= matches.length;
+    return fragment;
   }
 
-  search.addEventListener('input', () => { visible = 20; render(); });
-  [minimum, ratingBand, quality].forEach((control) =>
-    control.addEventListener('change', () => { visible = 20; render(); }));
+  function lineChart(monthly) {
+    const width = 760, height = 240, left = 46, right = 20, top = 20, bottom = 42;
+    const shown = monthly.slice(-30);
+    const counts = shown.map((row) => row[1]);
+    const max = Math.max(...counts, 1), min = Math.min(...counts, 0), span = Math.max(max - min, 1);
+    const points = shown.map((row, index) => [
+      left + index / Math.max(shown.length - 1, 1) * (width - left - right),
+      top + (height - top - bottom) - (row[1] - min) / span * (height - top - bottom), row[0]
+    ]);
+    const grid = Array.from({ length: 5 }, (_, index) => {
+      const y = top + (height - top - bottom) * index / 4;
+      return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="var(--line)"/>`;
+    }).join('');
+    const path = points.map((point) => `${point[0].toFixed(1)},${point[1].toFixed(1)}`).join(' ');
+    const endpoints = points.length
+      ? `<text x="${left}" y="${height - 12}" class="axis-label">${points[0][2]}</text><text x="${width - right}" y="${height - 12}" text-anchor="end" class="axis-label">${points.at(-1)[2]}</text>` : '';
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly review trend for the current selection">${grid}<polyline points="${path}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>${endpoints}</svg>`;
+  }
+
+  function barChart(ratings) {
+    const width = 520, height = 210, left = 42, top = 18, chartHeight = 158;
+    const max = Math.max(...ratings, 1), gap = 14, barWidth = (456 - gap * 4) / 5;
+    const bars = ratings.map((value, index) => {
+      const barHeight = value / max * chartHeight;
+      const x = left + index * (barWidth + gap), y = top + chartHeight - barHeight;
+      return `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="8" fill="var(--ink)" opacity="${0.38 + index * 0.12}"/><text x="${x + barWidth / 2}" y="${height - 10}" text-anchor="middle" class="axis-label">${index + 1} star</text><text x="${x + barWidth / 2}" y="${Math.max(y - 8, 10)}" text-anchor="middle" class="value-label">${integer.format(value)}</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Rating distribution for the current selection"><line x1="${left}" y1="176" x2="508" y2="176" stroke="var(--line)"/>${bars}</svg>`;
+  }
+
+  function render() {
+    const query = controls.search.value.trim().toUpperCase();
+    const minimum = Number(controls.minimum.value);
+    const rating = Number(controls.rating.value);
+    const start = controls.start.value || months[0];
+    const end = controls.end.value || months.at(-1);
+    const startIndex = Math.max(months.indexOf(start), 0);
+    const endIndex = Math.max(months.indexOf(end), 0);
+    const baseRows = data.cube.filter((row) => row[1] >= startIndex && row[1] <= endIndex
+      && (!rating || row[2] === rating)
+      && products[row[0]][0].includes(query)
+      && (!controls.quality.value || products[row[0]][1] === controls.quality.value));
+
+    const productCounts = new Map();
+    for (const row of baseRows) productCounts.set(row[0], (productCounts.get(row[0]) || 0) + row[3]);
+    const eligible = new Set([...productCounts].filter(([, reviews]) => reviews >= minimum).map(([id]) => id));
+    const rows = minimum ? baseRows.filter((row) => eligible.has(row[0])) : baseRows;
+    const productStats = new Map();
+    const monthly = new Map();
+    const ratings = [0, 0, 0, 0, 0];
+    let reviews = 0, ratingTotal = 0, helpful = 0;
+    for (const [productId, monthId, stars, rowCount, helpfulCount, words] of rows) {
+      reviews += rowCount;
+      ratingTotal += stars * rowCount;
+      helpful += helpfulCount;
+      ratings[stars - 1] += rowCount;
+      monthly.set(monthId, (monthly.get(monthId) || 0) + rowCount);
+      const stat = productStats.get(productId) || [0, 0, 0];
+      stat[0] += rowCount; stat[1] += stars * rowCount; stat[2] += words;
+      productStats.set(productId, stat);
+    }
+    const matches = [...productStats].map(([id, stat]) => ({
+      asin: products[id][0], quality_flag: products[id][1], review_count: stat[0],
+      avg_rating: stat[1] / stat[0], avg_review_word_count: stat[2] / stat[0]
+    })).sort((a, b) => b.review_count - a.review_count);
+    const monthRows = [...monthly].sort((a, b) => a[0] - b[0]).map(([id, value]) => [months[id], value]);
+    const peak = monthRows.reduce((best, row) => !best || row[1] > best[1] ? row : best, null);
+    const watchlist = matches.filter((product) => product.quality_flag === 'high_volume_low_rating');
+
+    document.querySelector('#kpi-reviews').textContent = integer.format(reviews);
+    document.querySelector('#kpi-products').textContent = integer.format(matches.length);
+    document.querySelector('#kpi-rating').textContent = reviews ? (ratingTotal / reviews).toFixed(2) : '—';
+    document.querySelector('#kpi-helpful').textContent = reviews ? pct(helpful / reviews * 100) : '—';
+    document.querySelector('#meta-window').textContent = monthRows.length ? `${monthRows[0][0]} – ${monthRows.at(-1)[0]}` : 'No data';
+    document.querySelector('#meta-latest').textContent = monthRows.at(-1)?.[0] || 'No data';
+    document.querySelector('#meta-peak').textContent = peak?.[0] || 'No data';
+    document.querySelector('#monthly-chart').innerHTML = lineChart(monthRows);
+    document.querySelector('#rating-chart').innerHTML = barChart(ratings);
+    body.replaceChildren(productRows(matches, visible));
+    watchBody.replaceChildren(productRows(watchlist, 6));
+    count.textContent = `Showing ${Math.min(visible, matches.length).toLocaleString('en-US')} of ${matches.length.toLocaleString('en-US')} products in the current selection`;
+    more.hidden = visible >= matches.length;
+    active.textContent = reviews ? `${integer.format(reviews)} reviews across ${integer.format(matches.length)} products; every KPI, chart and table reflects these filters.` : 'No matching reviews. Reset or widen the filters.';
+    const profile = [
+      ['High performers', matches.filter((product) => product.quality_flag === 'high_volume_high_rating').length],
+      ['Monitor', matches.filter((product) => product.quality_flag === 'monitor').length],
+      ['Watchlist', watchlist.length], ['Active months', monthRows.length]
+    ];
+    document.querySelector('#selection-profile').innerHTML = profile.map(([label, value]) => `<span class="chip">${label} <strong>${integer.format(value)}</strong></span>`).join('');
+  }
+
+  controls.start.min = controls.end.min = months[0];
+  controls.start.max = controls.end.max = months.at(-1);
+  controls.start.value = months[0];
+  controls.end.value = months.at(-1);
+  controls.search.addEventListener('input', () => { visible = 20; render(); });
+  Object.values(controls).slice(1).forEach((control) =>
+    control.addEventListener('change', () => {
+      if (controls.start.value > controls.end.value) controls.end.value = controls.start.value;
+      visible = 20; render();
+    }));
+  document.querySelector('#reset-filters').addEventListener('click', () => {
+    controls.search.value = ''; controls.minimum.value = '0'; controls.rating.value = '0';
+    controls.quality.value = ''; controls.start.value = months[0]; controls.end.value = months.at(-1);
+    visible = 20; render();
+  });
   more.addEventListener('click', () => { visible += 20; render(); });
   render();
 })();"""
@@ -117,12 +218,33 @@ def load_marts() -> dict[str, list[dict[str, str]]]:
         "monthly": read_csv(MARTS_DIR / "mart_monthly_review_trends.csv"),
         "ratings": read_csv(MARTS_DIR / "mart_rating_distribution.csv"),
         "quality": read_csv(MARTS_DIR / "mart_data_quality_summary.csv"),
-        "terms": read_csv(MARTS_DIR / "mart_top_review_terms.csv"),
     }
 
 
 def quality_lookup(rows: list[dict[str, str]]) -> dict[str, str]:
     return {row["metric"]: row["value"] for row in rows}
+
+
+def build_dashboard_data(products: list[dict[str, str]]) -> dict[str, list]:
+    product_index = {row["asin"]: index for index, row in enumerate(products)}
+    cube: dict[tuple[int, str, int], list[int]] = defaultdict(lambda: [0, 0, 0])
+    with FACT_PATH.open("r", encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            key = (product_index[row["asin"]], row["review_month"], int(row["rating_id"]))
+            values = cube[key]
+            values[0] += 1
+            values[1] += int(row["helpful_total"]) > 0
+            values[2] += int(row["review_word_count"])
+    months = sorted({month for _, month, _ in cube})
+    month_index = {month: index for index, month in enumerate(months)}
+    return {
+        "products": [[row["asin"], row["quality_flag"]] for row in products],
+        "months": months,
+        "cube": [
+            [product_id, month_index[month], rating, *values]
+            for (product_id, month, rating), values in cube.items()
+        ],
+    }
 
 
 def svg_bar_chart(ratings: list[dict[str, str]]) -> str:
@@ -226,7 +348,6 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
     products = sorted(data["products"], key=lambda row: number(row["review_count"]), reverse=True)
     monthly = data["monthly"]
     ratings = data["ratings"]
-    terms = data["terms"]
     quality = quality_lookup(data["quality"])
 
     total_reviews = fmt_int(quality.get("rows_valid", "0"))
@@ -238,21 +359,11 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
     )
 
     top_products = products[:8]
-    product_json = json.dumps([
-        {
-            "asin": row["asin"],
-            "review_count": int(number(row["review_count"])),
-            "avg_rating": number(row["avg_rating"]),
-            "avg_review_word_count": round(number(row["avg_review_word_count"]), 1),
-            "quality_flag": row["quality_flag"],
-        }
-        for row in products
-    ], separators=(",", ":")).replace("<", "\\u003c")
+    dashboard_json = json.dumps(build_dashboard_data(products), separators=(",", ":")).replace("<", "\\u003c")
     watchlist = [row for row in products if row["quality_flag"] == "high_volume_low_rating"][:6]
     if not watchlist:
         watchlist = products[8:14]
 
-    top_terms = terms[:18]
     latest_month = monthly[-1] if monthly else {"review_month": "n/a", "review_count": "0", "avg_rating": "0"}
     peak_month = max(monthly, key=lambda row: number(row["review_count"])) if monthly else latest_month
 
@@ -275,15 +386,11 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
           <td><span class="asin">{html.escape(row['asin'])}</span></td>
           <td>{fmt_int(row['review_count'])}</td>
           <td>{fmt_float(row['avg_rating'])}</td>
-          <td>{quality_label(row['quality_flag'])}</td>
+          <td>{fmt_float(row['avg_review_word_count'], 1)}</td>
+          <td><span class="{status_class(row['quality_flag'])}">{quality_label(row['quality_flag'])}</span></td>
         </tr>
         """
         for row in watchlist
-    )
-
-    term_chips = "\n".join(
-        f'<span class="chip">{html.escape(row["term"])} <strong>{fmt_int(row["count"])}</strong></span>'
-        for row in top_terms
     )
 
     return f"""<!doctype html>
@@ -362,7 +469,7 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       max-width: 880px;
       font-size: clamp(42px, 5.4vw, 84px);
       line-height: 0.94;
-      letter-spacing: -0.055em;
+      letter-spacing: -0.04em;
     }}
 
     .subtitle {{
@@ -474,14 +581,32 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       grid-column: 1 / -1;
     }}
 
-    .product-filters {{
-      display: grid;
-      grid-template-columns: 1.4fr repeat(3, 1fr);
-      gap: 12px;
+    .filter-panel {{
+      margin-bottom: 14px;
+      padding: 18px;
+    }}
+
+    .filter-head {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
       margin-bottom: 14px;
     }}
 
-    .product-filters label {{
+    .filter-head p {{
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }}
+
+    .dashboard-filters {{
+      display: grid;
+      grid-template-columns: 1.4fr repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }}
+
+    .dashboard-filters label {{
       display: grid;
       gap: 6px;
       color: var(--muted);
@@ -491,8 +616,8 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       text-transform: uppercase;
     }}
 
-    .product-filters input,
-    .product-filters select {{
+    .dashboard-filters input,
+    .dashboard-filters select {{
       width: 100%;
       min-height: 42px;
       padding: 0 11px;
@@ -503,7 +628,8 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       font: 500 14px Arial, Helvetica, sans-serif;
     }}
 
-    .product-filters :is(input, select):focus-visible,
+    .dashboard-filters :is(input, select):focus-visible,
+    .reset-filters:focus-visible,
     .load-more:focus-visible {{
       outline: 2px solid var(--accent);
       outline-offset: 2px;
@@ -513,6 +639,28 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       margin: 0 0 14px !important;
       font-variant-numeric: tabular-nums;
     }}
+
+    .active-filter-summary {{
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .reset-filters {{
+      min-height: 38px;
+      padding: 0 15px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--ink);
+      font: 700 13px Arial, Helvetica, sans-serif;
+      cursor: pointer;
+      white-space: nowrap;
+    }}
+
+    .reset-filters:hover {{ background: var(--soft); }}
 
     .load-more {{
       display: block;
@@ -670,8 +818,8 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
         grid-template-columns: 1fr;
       }}
 
-      .product-filters {{
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      .dashboard-filters {{
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }}
 
       .meta {{
@@ -694,9 +842,11 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
         overflow-x: auto;
       }}
 
-      .product-filters {{
+      .dashboard-filters {{
         grid-template-columns: 1fr;
       }}
+
+      .filter-head {{ align-items: flex-start; }}
 
       .meta-grid {{
         grid-template-columns: 1fr;
@@ -715,21 +865,21 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       <section>
         <div class="label"><span class="dot"></span> Retail Electronics Analytics</div>
         <h1>Review signals into BI-ready decisions.</h1>
-        <p class="subtitle">A static executive dashboard generated from Amazon Electronics review marts: product quality, rating mix, review trends, and data completeness.</p>
+        <p class="subtitle">An interactive executive dashboard generated from Amazon Electronics review data: product quality, rating mix, review trends, and data completeness.</p>
       </section>
       <aside class="meta">
         <div class="meta-grid">
           <div>
             <div class="mini-label">Dataset window</div>
-            <div class="mini-value">{html.escape(review_window)}</div>
+            <div class="mini-value" id="meta-window">{html.escape(review_window)}</div>
           </div>
           <div>
             <div class="mini-label">Latest month</div>
-            <div class="mini-value">{html.escape(latest_month['review_month'])}</div>
+            <div class="mini-value" id="meta-latest">{html.escape(latest_month['review_month'])}</div>
           </div>
           <div>
             <div class="mini-label">Peak month</div>
-            <div class="mini-value">{html.escape(peak_month['review_month'])}</div>
+            <div class="mini-value" id="meta-peak">{html.escape(peak_month['review_month'])}</div>
           </div>
           <div>
             <div class="mini-label">Source</div>
@@ -739,25 +889,56 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
       </aside>
     </header>
 
+    <section class="card filter-panel" aria-labelledby="filter-title">
+      <div class="filter-head">
+        <div>
+          <h2 id="filter-title">Filter dashboard</h2>
+          <p>Every KPI, chart and table updates from the same selection.</p>
+        </div>
+        <button class="reset-filters" id="reset-filters" type="button">Reset filters</button>
+      </div>
+      <div class="dashboard-filters">
+        <label>Product ASIN <input id="product-search" type="search" placeholder="Search product ID" autocomplete="off" /></label>
+        <label>From month <input id="start-month" type="month" /></label>
+        <label>To month <input id="end-month" type="month" /></label>
+        <label>Rating <select id="rating-filter">
+          <option value="0">All ratings</option><option value="5">5 stars</option>
+          <option value="4">4 stars</option><option value="3">3 stars</option>
+          <option value="2">2 stars</option><option value="1">1 star</option>
+        </select></label>
+        <label>Minimum reviews <select id="minimum-reviews">
+          <option value="0">Any volume</option><option value="100">100+</option>
+          <option value="250">250+</option><option value="500">500+</option>
+        </select></label>
+        <label>Quality flag <select id="quality-flag">
+          <option value="">All flags</option>
+          <option value="high_volume_high_rating">High volume / high rating</option>
+          <option value="high_volume_low_rating">Watchlist</option>
+          <option value="monitor">Monitor</option>
+        </select></label>
+      </div>
+      <p class="active-filter-summary" id="active-filter-summary" role="status" aria-live="polite"></p>
+    </section>
+
     <section class="kpis">
       <article class="card kpi">
         <div class="mini-label">Processed reviews</div>
-        <div class="value">{total_reviews}</div>
+        <div class="value" id="kpi-reviews">{total_reviews}</div>
         <div class="note">Valid JSONL rows converted into analysis-ready marts.</div>
       </article>
       <article class="card kpi">
         <div class="mini-label">Unique products</div>
-        <div class="value">{unique_products}</div>
+        <div class="value" id="kpi-products">{unique_products}</div>
         <div class="note">ASIN-level product keys available for KPI monitoring.</div>
       </article>
       <article class="card kpi">
         <div class="mini-label">Weighted avg rating</div>
-        <div class="value">{avg_rating:.2f}</div>
+        <div class="value" id="kpi-rating">{avg_rating:.2f}</div>
         <div class="note">Weighted across all processed review ratings.</div>
       </article>
       <article class="card kpi">
         <div class="mini-label">Helpful vote coverage</div>
-        <div class="value">{helpful_coverage}</div>
+        <div class="value" id="kpi-helpful">{helpful_coverage}</div>
         <div class="note">Share of reviews with at least one helpful-vote signal.</div>
       </article>
     </section>
@@ -770,7 +951,7 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
             <p>Recent review-volume trajectory from dashboard-ready monthly mart.</p>
           </div>
         </div>
-        {svg_line_chart(monthly)}
+        <div id="monthly-chart">{svg_line_chart(monthly)}</div>
       </article>
 
       <article class="card panel">
@@ -780,34 +961,17 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
             <p>Rating mix shows strong positive skew, with watchlist products still visible in product-level marts.</p>
           </div>
         </div>
-        {svg_bar_chart(ratings)}
+        <div id="rating-chart">{svg_bar_chart(ratings)}</div>
       </article>
 
       <article class="card panel wide">
         <div class="panel-header">
           <div>
-            <h2>Explore products</h2>
-            <p>Search the full product mart, sorted by review volume. Filters apply to this table only; KPIs and charts above show the complete sample.</p>
+            <h2>Products in selection</h2>
+            <p>Sorted by review volume after the dashboard filters are applied.</p>
           </div>
         </div>
-        <div class="product-filters">
-          <label>Product ASIN <input id="product-search" type="search" placeholder="Search product ID" autocomplete="off" /></label>
-          <label>Minimum reviews <select id="minimum-reviews">
-            <option value="0">Any volume</option><option value="100">100+</option>
-            <option value="250">250+</option><option value="500">500+</option>
-          </select></label>
-          <label>Average rating <select id="rating-band">
-            <option value="all">Any rating</option><option value="low">Below 3.5</option>
-            <option value="mid">3.5 to 4.49</option><option value="high">4.5 and above</option>
-          </select></label>
-          <label>Quality flag <select id="quality-flag">
-            <option value="">All flags</option>
-            <option value="high_volume_high_rating">High volume / high rating</option>
-            <option value="high_volume_low_rating">Watchlist</option>
-            <option value="monitor">Monitor</option>
-          </select></label>
-        </div>
-        <p class="filter-count" id="product-count" role="status" aria-live="polite">Showing 8 highest-volume products</p>
+        <p class="filter-count" id="product-count">Showing 8 highest-volume products</p>
         <table>
           <thead>
             <tr>
@@ -836,21 +1000,22 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
               <th>Product</th>
               <th>Reviews</th>
               <th>Avg rating</th>
-              <th>Status</th>
+              <th>Avg words</th>
+              <th>Flag</th>
             </tr>
           </thead>
-          <tbody>{watch_rows}</tbody>
+          <tbody id="watch-results">{watch_rows}</tbody>
         </table>
       </article>
 
       <article class="card panel">
         <div class="panel-header">
           <div>
-            <h2>Common review language</h2>
-            <p>Top cleaned terms from review summaries and body text.</p>
+            <h2>Selection profile</h2>
+            <p>Product mix and active months after the same dashboard filters are applied.</p>
           </div>
         </div>
-        <div class="chips">{term_chips}</div>
+        <div class="chips" id="selection-profile"></div>
       </article>
 
       <article class="card panel wide">
@@ -870,11 +1035,11 @@ def render_dashboard(data: dict[str, list[dict[str, str]]]) -> str:
     </section>
 
     <footer>
-      <span>Generated from data/marts by src/build_dashboard.py</span>
+      <span>Generated from the review model and marts by src/build_dashboard.py</span>
       <span>Retail Electronics Analytics Pipeline</span>
     </footer>
   </main>
-  <script type="application/json" id="product-data">{product_json}</script>
+  <script type="application/json" id="dashboard-data">{dashboard_json}</script>
   <script>{FILTER_SCRIPT}</script>
 </body>
 </html>
